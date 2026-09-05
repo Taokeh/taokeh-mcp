@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * taokeh-mcp — the CLI half.
+ * taokeh-mcp-client — the CLI half.
  *
- *   taokeh-mcp list
- *   taokeh-mcp call <tool> [--args '<json>']
+ *   taokeh-mcp-client list
+ *   taokeh-mcp-client call <tool> [--args '<json>']
  *
  * The token comes from the TAOKEH_MCP_TOKEN environment variable and is never a command-line
  * flag, so it stays out of shell history and process listings.
@@ -13,22 +13,25 @@
  */
 
 import {
+  assertSafeEndpoint,
   connectTaokeh,
   describeConnectionError,
   firstLine,
+  DEFAULT_MCP_HOST,
   DEFAULT_MCP_URL,
   DOCS_URL,
   TOKEN_PAGE_URL,
 } from './index';
 
-const USAGE = `taokeh-mcp — talk to a Taokeh company over MCP.
+const USAGE = `taokeh-mcp-client — talk to a Taokeh company over MCP.
 
 Usage:
-  taokeh-mcp list                          List the tools this company exposes.
-  taokeh-mcp call <tool> [--args '<json>'] Call one tool and print its result.
+  taokeh-mcp-client list                          List the tools this company exposes.
+  taokeh-mcp-client call <tool> [--args '<json>'] Call one tool and print its result.
 
 Options:
-  --url <endpoint>   Endpoint to use (default ${DEFAULT_MCP_URL}).
+  --url <endpoint>   Endpoint to use (default ${DEFAULT_MCP_URL}). Must be https,
+                     unless it is localhost / 127.0.0.1.
   --args '<json>'    A JSON object of tool arguments. Default: {}.
   -h, --help         This text.
 
@@ -58,7 +61,7 @@ function parseArgv(argv: string[]): Parsed {
       if (a === '--url') out.url = value;
       else out.args = value;
     } else if (a.startsWith('--')) {
-      throw new Error(`Unknown option ${a}. Run taokeh-mcp --help.`);
+      throw new Error(`Unknown option ${a}. Run taokeh-mcp-client --help.`);
     } else if (out.command === undefined) {
       out.command = a;
     } else {
@@ -102,7 +105,7 @@ async function run(argv: string[]): Promise<number> {
     return parsed.command === undefined && !parsed.help ? 1 : 0;
   }
   if (parsed.command !== 'list' && parsed.command !== 'call') {
-    throw new Error(`Unknown command "${parsed.command}". Run taokeh-mcp --help.`);
+    throw new Error(`Unknown command "${parsed.command}". Run taokeh-mcp-client --help.`);
   }
 
   const token = process.env.TAOKEH_MCP_TOKEN ?? '';
@@ -114,11 +117,19 @@ async function run(argv: string[]): Promise<number> {
   let toolArgs: Record<string, unknown> = {};
   if (parsed.command === 'call') {
     toolName = parsed.positional[0];
-    if (!toolName) throw new Error('Which tool? Usage: taokeh-mcp call <tool> [--args \'<json>\']');
+    if (!toolName) throw new Error('Which tool? Usage: taokeh-mcp-client call <tool> [--args \'<json>\']');
     toolArgs = parseToolArgs(parsed.args);
   }
 
-  const conn = await connectTaokeh({ token, url: parsed.url });
+  // Resolve the endpoint before anything is sent. `--url` is a real override (self-hosted,
+  // staging, a local server), so an unexpected host is a warning, not a refusal — but the person
+  // typing it should see where their token is about to go. The token itself is never printed.
+  const endpoint = assertSafeEndpoint(parsed.url ?? DEFAULT_MCP_URL);
+  if (endpoint.hostname.toLowerCase() !== DEFAULT_MCP_HOST) {
+    process.stderr.write(`Sending your token to ${endpoint.host}, not ${DEFAULT_MCP_HOST}.\n`);
+  }
+
+  const conn = await connectTaokeh({ token, url: endpoint.toString() });
   try {
     if (parsed.command === 'list') {
       const { tools } = await conn.client.listTools();

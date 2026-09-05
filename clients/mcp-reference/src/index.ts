@@ -21,6 +21,39 @@ export const TOKEN_PAGE_URL = 'https://taokeh.my/integrations/mcp';
 /** Tool catalogue + auth documentation. */
 export const DOCS_URL = 'https://taokeh.my/mcp-server';
 
+/** The host the token is meant for. Anything else is an override worth saying out loud. */
+export const DEFAULT_MCP_HOST = 'taokeh.my';
+
+/** Version this client reports to the server in the MCP handshake. */
+export const CLIENT_VERSION = '0.1.2';
+
+/**
+ * Resolve an endpoint and refuse the ones that would leak the token.
+ *
+ * The rule: https, or a loopback address for local testing. A bearer token that grants everything
+ * an admin MCP session grants must never ride a plaintext hop, and `--url` is a real override —
+ * self-hosted and staging instances need it — so the floor lives here rather than in the flag.
+ */
+export function assertSafeEndpoint(url: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Not a usable endpoint: ${url}`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+
+  if (parsed.protocol !== 'https:' && !loopback) {
+    throw new Error(
+      `Refusing to send your Taokeh token over "${parsed.protocol}//" to ${parsed.host}. ` +
+        'Use an https:// endpoint — plain http is only allowed for localhost / 127.0.0.1.',
+    );
+  }
+  return parsed;
+}
+
 export interface ConnectOptions {
   /** A personal token minted at TOKEN_PAGE_URL. */
   token: string;
@@ -46,7 +79,9 @@ export async function connectTaokeh(options: ConnectOptions): Promise<TaokehConn
   const token = (options.token ?? '').trim();
   if (!token) throw new Error(`No token supplied. Mint one at ${TOKEN_PAGE_URL}`);
 
-  const transport = new StreamableHTTPClientTransport(new URL(options.url ?? DEFAULT_MCP_URL), {
+  const endpoint = assertSafeEndpoint(options.url ?? DEFAULT_MCP_URL);
+
+  const transport = new StreamableHTTPClientTransport(endpoint, {
     // The token rides every request as a plain bearer header. The SDK's OAuth provider is
     // deliberately not wired up: a personal token needs no browser round-trip.
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
@@ -54,7 +89,7 @@ export async function connectTaokeh(options: ConnectOptions): Promise<TaokehConn
 
   const client = new Client({
     name: options.clientName ?? 'taokeh-mcp-client',
-    version: options.clientVersion ?? '0.1.0',
+    version: options.clientVersion ?? CLIENT_VERSION,
   });
 
   try {
@@ -101,7 +136,7 @@ export function describeConnectionError(err: unknown): string {
   return message;
 }
 
-/** The first line of a tool description — what `taokeh-mcp list` prints. */
+/** The first line of a tool description — what `taokeh-mcp-client list` prints. */
 export function firstLine(text: string | undefined): string {
   return (text ?? '').split('\n')[0].trim();
 }

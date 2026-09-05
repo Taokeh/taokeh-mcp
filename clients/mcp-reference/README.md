@@ -14,7 +14,16 @@ somebody with access approves it inside Taokeh before anything is posted. Nothin
 npm install -g taokeh-mcp-client
 ```
 
-Node 18 or newer.
+Node 18 or newer. The installed command is `taokeh-mcp-client`.
+
+## What's new in 0.1.2
+
+- **The endpoint has an https floor.** `connectTaokeh` (and the CLI) refuse a plain-`http`
+  endpoint unless the host is `localhost` or `127.0.0.1`, and the CLI prints one stderr line when
+  the token is going anywhere other than `taokeh.my`. A copied-from-somewhere `--url` can no
+  longer quietly send your token to a stranger.
+- **The command is now `taokeh-mcp-client`**, matching the install name. It was `taokeh-mcp` in
+  0.1.0/0.1.1 — update any script that used the old name.
 
 ## Mint a token
 
@@ -28,14 +37,20 @@ export TAOKEH_MCP_TOKEN="tkm_..."
 ## Use the CLI
 
 ```bash
-taokeh-mcp list
-taokeh-mcp call business_snapshot
-taokeh-mcp call open_invoices --args '{"customer":"Lim Hardware"}'
+taokeh-mcp-client list
+taokeh-mcp-client call business_snapshot
+taokeh-mcp-client call open_invoices --args '{"customer":"Lim Hardware"}'
 ```
 
-`--url <endpoint>` points at a different instance (default `https://taokeh.my/mcp`). The token is
-read from `TAOKEH_MCP_TOKEN` only — there is no `--token` flag, so it stays out of your shell
-history.
+The command is `taokeh-mcp-client` — the same string you installed.
+
+`--url <endpoint>` points at a different instance (default `https://taokeh.my/mcp`) — a
+self-hosted or staging server. It must be `https`, unless it is `localhost` or `127.0.0.1`; the
+client refuses anything else rather than send your token in the clear. If the host is not
+`taokeh.my`, it says so on stderr before connecting.
+
+The token is read from `TAOKEH_MCP_TOKEN` only — there is no `--token` flag, so it stays out of
+your shell history. Nothing here ever prints it.
 
 ## Use it as a library
 

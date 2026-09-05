@@ -1,6 +1,6 @@
 {
   "name": "taokeh-mcp-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Minimal reference client for the Taokeh MCP connector (taokeh.my) — connect with a bearer token, list tools, call one.",
   "license": "MIT",
   "author": "Enya Venture",
@@ -15,7 +15,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "taokeh-mcp": "dist/cli.js"
+    "taokeh-mcp-client": "dist/cli.js"
   },
   "files": [
     "dist",
