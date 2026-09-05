@@ -1,7 +1,7 @@
 # taokeh-mcp-client
 
 A small reference client for the Taokeh MCP connector. It connects with a personal token, lists
-the tools your workspace exposes, and calls one. That is the whole scope — copy it into your own
+the tools your company exposes, and calls one. That is the whole scope — copy it into your own
 integration, or use the CLI to check a token from the terminal.
 
 Taokeh (<https://taokeh.my>) is accounting software for Malaysian small businesses. The connector

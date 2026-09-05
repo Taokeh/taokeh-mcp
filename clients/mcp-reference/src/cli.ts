@@ -21,10 +21,10 @@ import {
   TOKEN_PAGE_URL,
 } from './index';
 
-const USAGE = `taokeh-mcp — talk to a Taokeh workspace over MCP.
+const USAGE = `taokeh-mcp — talk to a Taokeh company over MCP.
 
 Usage:
-  taokeh-mcp list                          List the tools this workspace exposes.
+  taokeh-mcp list                          List the tools this company exposes.
   taokeh-mcp call <tool> [--args '<json>'] Call one tool and print its result.
 
 Options:

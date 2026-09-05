@@ -1,7 +1,7 @@
 /**
  * taokeh-mcp-client — the library half.
  *
- * One job: hand back a connected MCP `Client` pointed at a Taokeh workspace, authenticated with
+ * One job: hand back a connected MCP `Client` pointed at a Taokeh company, authenticated with
  * a personal bearer token. Everything else (tool names, arguments, results) is the connector's
  * own published surface — see https://taokeh.my/mcp-server.
  *
@@ -39,7 +39,7 @@ export interface TaokehConnection {
 }
 
 /**
- * Connect to a Taokeh workspace and complete the MCP handshake.
+ * Connect to a Taokeh company and complete the MCP handshake.
  * Throws on a failed handshake — pass the error to `describeConnectionError` for a human line.
  */
 export async function connectTaokeh(options: ConnectOptions): Promise<TaokehConnection> {
