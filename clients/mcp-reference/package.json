@@ -1,0 +1,38 @@
+{
+  "name": "taokeh-mcp-client",
+  "version": "0.1.0",
+  "description": "Minimal reference client for the Taokeh MCP connector (taokeh.my) — connect with a bearer token, list tools, call one.",
+  "license": "MIT",
+  "author": "Enya Venture",
+  "keywords": ["mcp", "taokeh", "accounting", "malaysia"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taokeh/taokeh-mcp.git",
+    "directory": "clients/mcp-reference"
+  },
+  "homepage": "https://taokeh.my/mcp-server",
+  "bugs": "https://github.com/taokeh/taokeh-mcp/issues",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "taokeh-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "prepack": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

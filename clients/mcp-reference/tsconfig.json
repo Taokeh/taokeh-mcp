@@ -1,0 +1,19 @@
+{
+  "//": "Self-contained build for the published package. The ROOT tsconfig does not include clients/ (its include list is src/scripts/test) and tsconfig.build.json emits only src/, so `npm run build` at the root never touches this folder. The package deliberately has no node_modules of its own — the root install resolves @modelcontextprotocol/sdk and @types/node by walking up.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
