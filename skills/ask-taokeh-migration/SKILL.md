@@ -298,10 +298,16 @@ they refuse with tells you the route:
   rows are updated in place. **The exception is stock**: an import never moves the on-hand quantity
   of a SKU that already exists, so a wrong opening quantity cannot be fixed this way. That one is a
   stock take, and it is the owner's job.
-- **Opening balances — the owner has to open the door first.** Staging over a posted trial balance
-  or aged list is refused outright, because it would double-count. The refusal names the way
-  through: the owner re-imports in Taokeh, which VOIDS AND REPLACES the old set, and then they can
-  ask you to stage the corrected figures. Offer to prepare the corrected set; wait for them.
+- **Opening balances — a trial balance can be sent again; an aged list cannot.** A corrected trial
+  balance may be staged even when opening balances are already saved (a starting-money save counts).
+  When the owner approves it, it REPLACES the whole saved opening entry, and their review screen says
+  so before they post. The staging answer tells you how many saved lines that is: tell the owner. An
+  aged list whose opening documents are already posted is refused, because staging over it would
+  double-count. The owner deletes those documents on the opening-balances page first, then can ask you
+  to stage the corrected list. Offer to prepare it; wait for them.
+- **A bank already opened in Banking** (listed in the contract's `banksOpenedInBanking`) carries its
+  own opening balance. Send its trial-balance row anyway, so the set still ties to the report, and tell
+  the owner to skip it on the review screen. Taokeh refuses that row when they post.
 - **A posted document — you cannot re-book it, and you must not try.** Re-staging the same
   `sourceDocId` returns "already posted, nothing changed". **Do not stage a second copy under a new
   `sourceDocId`** — that does not correct anything, it books the sale twice, and it is the single
@@ -385,7 +391,7 @@ whole set properly.
 Stop, say why, and let the owner act:
 
 - **The books are locked** — a permanent refusal until they unlock.
-- **Opening balances for that kind are already posted** — staging over them would double-count, and
+- **An aged list's opening documents are already posted** — staging over them would double-count, and
   only the owner can undo them (see "When the mistake is found AFTER it posted").
 - **The switching lane is closed** — the owner turns it on at **/switch**; it can only be open
   before the books are locked.

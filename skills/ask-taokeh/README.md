@@ -12,7 +12,7 @@ meeting them cold still has to figure out the craft: which tool first, what the 
 where the boundaries sit. This skill is that craft, written down:
 
 - the money-in and money-out workflows, in the right order
-- the weekly bank-review rhythm
+- the weekly bank-review rhythm, and working the bank reconciliation with you
 - how to read the business honestly (and how to say what the numbers mean)
 - the ground rules: your AI drafts, **you** approve — always, in-app
 

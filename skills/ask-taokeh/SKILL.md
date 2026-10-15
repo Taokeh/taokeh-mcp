@@ -2,7 +2,7 @@
 name: ask-taokeh
 description: Run day-to-day Malaysian SME bookkeeping through the Ask Taokeh connector (MCP) — invoicing, expenses, bank review, and honest business readings. Use when the user's books live in Taokeh (taokeh.my) and the Taokeh connector tools are available in this session.
 license: MIT
-verifiedAgainstTaokehRelease: "1.14"
+verifiedAgainstTaokehRelease: "1.24"
 ---
 
 # Ask Taokeh
@@ -97,6 +97,16 @@ concluding the tool is unavailable:
 - `income_statement` needs **from** and **to**; `balance_sheet` needs **asOf**.
 - `stock_level` needs a **query** (name or SKU).
 - `search_documents` / `search_expenses` / `search_journal` need at least one filter.
+- `search_documents` with `docType: 'payment'` returns the MONEY, not documents: one row per bank
+  line that settled something, with `allocations` (which documents — invoice, credit note,
+  sell-side debit note, bill or buy-side debit note — how much each, a per-allocation note; a
+  negative one is a refund) and `source` (statement, receipt draft, payment draft, or manual for
+  anything recorded by hand in the app — the value is the snake-case word). It is opt-in — omitting docType never includes payments — and its `docId` is a BANK
+  LINE id, not a document. Contras (set-offs) are not payments and never appear.
+- `bank_review_queue` defaults to the unreviewed rows of the latest statement, but takes
+  `status` (`confirmed` / `posted` / `ignored` / `all`) and `from`/`to` (a window across every
+  statement when no `statementId` is given). Settled rows carry what was decided, with null
+  suggestions — never propose a category on one. Hand-recorded receipts/payments are not in it.
 - `create_invoice_draft` needs **saleDate** (not "invoiceDate") and **paymentMethod**
   (`CASH` or `CREDIT`).
 - `create_expense_draft` needs a **date**, a **debitAccountCode** (what the money was for) AND a
@@ -121,11 +131,23 @@ worked example grounded in this company, which is cheaper than guessing twice.
   exist?". Always give it at least one filter.
 - `search_document_lines` — the LINE ITEMS behind those documents, in bulk: quantity, unit,
   unit price, discount, line total and cost, across invoices, credit notes, sell-side debit
-  notes, bills and buy-side debit notes. This is the analysis tool: "average selling price per
-  size", "margin on Chengal this quarter" — pull the lines and do the arithmetic yourself
-  instead of opening documents one PDF at a time. Sizes and grades live in the product name and
-  line description text, not in structured fields, so group by what the text says. Capped per
-  call with a `more` flag — narrow by date when it tells you there is more.
+  notes, bills, buy-side debit notes, quotes, delivery orders and purchase orders. Use it for analysis, e.g.
+  "average selling price per size" or "margin on Chengal this quarter". Pull the lines and do
+  the arithmetic yourself, in ringgit: line margin = lineTotal × fxRate − quantity × unitCost
+  (lineTotal is after the line discount and before SST; unitCost is already ringgit on sales
+  lines). Check before you add anything up:
+  - Figures are in each document's own currency (`currency`, `fxRate`).
+  - Leave `isMeasureDrift` rows out of any average price or quantity; they are the rounding
+    correction on per-foot lines. The flag is reliable from 4 Sep 2026 on invoices, 19 Sep on
+    delivery orders and 23 Sep on quotes.
+  - A converted quote or invoiced delivery order also shows up as invoice lines, and a converted
+    purchase order as bill lines. For what was sold, use invoices; for what was bought, use bills;
+    never add the pulls together.
+  - `unitStamped: false` means the product's current unit is standing in.
+
+  Sizes and grades live in the product name and line description text, not in structured
+  fields, so group by what the text says. Each call is capped and returns a `more` flag; narrow
+  by date when it says so.
 - `stock_movements` — the stock card in bulk, across products: what moved, when and why, the
   signed quantity, the balance it left behind and the document behind each move. This answers
   "where did my stock go?" — but read the `stockMode` it reports FIRST: on the default
@@ -154,6 +176,13 @@ or add to a sale that already happened. A credit note needs the original documen
 `search_documents` first — and its quantities can never exceed what the original sold. Whether
 returned goods go back into stock is a real business question: ask the user, don't assume.
 
+**A new contact from a business card** (`create_contact_draft`): read the card yourself and send the
+fields WITH the card image. The image is required, because the owner checks your reading against
+the picture before approving. Leave any other field you cannot read empty and say so in `notes` —
+never guess a phone digit, an email spelling or a company name. The person's name is the one field
+that cannot be left empty: if it is illegible, don't file at all, and tell the user the card is
+unreadable.
+
 ## Workflow 2 — money out (bills, expenses, purchases)
 
 Two different doors, and the choice matters:
@@ -162,6 +191,19 @@ Two different doors, and the choice matters:
   later. Use it when the supplier gave terms.
 - **A paid expense** (`create_expense_draft`) is money already GONE — paid on the spot, no
   payable created. Use it for the receipt in the user's hand.
+
+- **A supplier payment** (`create_payment_draft`) SETTLES bills you already recorded — it creates
+  nothing new, it clears what is owed. Resolve the supplier with `resolve_vendor`, see what is
+  outstanding with `ap_aging`, find the individual bills with `search_documents`, then give either a
+  lump `total` (auto-allocated oldest-first) or explicit per-bill `allocations` — preferring
+  `purchaseId` over `reference`, because a supplier's own bill number is not unique in Taokeh and an
+  ambiguous one is refused rather than guessed. Ringgit bills only; a foreign bill routes to
+  Banking → Match. A credit card is never the paying account. ⚠ **If this company imports bank
+  statements, the payment is usually already on an imported line** — propose the allocation on that
+  line with `draft_bank_classification` instead of filing here, or the same money lands in the books
+  twice. When Taokeh can see such a line it flags the draft for review and returns a `warning`
+  naming the line — repeat that warning to the owner. Nothing is paid and nothing posts until
+  the owner approves in Taokeh; Taokeh never sends anybody money at any point.
 
 **Purchases vs expenses:** goods bought to resell or stock go through purchase documents
 (`create_purchase_order_draft` for orders, bills for the goods) so inventory and cost of sales
@@ -205,6 +247,14 @@ silently.
 onto the existing draft — no duplicate is created. If you genuinely cannot deliver the file
 either way, say so plainly so the user attaches it themselves when they approve.
 
+**The Shoebox — photos already sent in.** Staff snap receipts and bills into Taokeh's Shoebox
+from their phones. When the user says "do the receipts" or "clear the shoebox", call
+`shoebox_items` for the waiting pile, open each photo with `get_attachment` (owner `shoebox`), read
+it yourself, then file the matching draft with `shoeboxItemId` set. Do NOT re-send the photo:
+Taokeh attaches the copy it already holds. An item that already carries a pending draft gets
+nothing more from you — correct that draft with `revise_draft`. An item Taokeh is already reading
+itself (`beingRead`) gets nothing either; tell the user where that draft is waiting.
+
 `create_journal_draft` is the everything-else door for a true journal entry (accruals,
 corrections, owner advances). Use it only when no document tool fits, and write a memo a human
 will understand next year.
@@ -217,6 +267,13 @@ and every one of them works the same way: you propose, Taokeh shows the owner a 
 diff** of the changed fields only, and nothing on the record moves until a human approves it. None of
 these edits a record directly.
 
+- `update_invoice_draft` — an invoice already posted with a wrong line, date, payment method,
+  reference or term. **ADMIN-ONLY** to approve. The invoice keeps its number, its attached document
+  and its reminder history. Pass the invoice's real `saleId` from `search_documents`, never its
+  printed number, and send `lines` as the FULL replacement set. Route before you file: a sale that
+  never happened is VOIDED by the owner in Taokeh (there is deliberately no AI lane for voiding),
+  and something that changed after the sale — goods came back, a discount agreed later — is a
+  credit note, not a correction.
 - `update_contact_draft` — a customer or supplier you already have: tax id (TIN), registration number,
   the e-Invoice city/postcode/state, phone, email, address, the e-Invoice / self-bill / reminder flags,
   and the contact persons filed under them.
@@ -227,6 +284,34 @@ these edits a record directly.
   **FORWARD-ONLY**: an approved change reaches the NEXT payroll run, and payslips or runs already filed
   are never recalculated or re-opened. Say that plainly rather than letting the owner think a filed
   payslip will be restated. The `employeeId` comes from `payroll_summary`.
+- `update_bill_draft` — a supplier bill already posted with a wrong line, quantity, cost, date, term or
+  payment method. **ADMIN-ONLY** to approve. Approval re-books the bill under the same number,
+  supplier, currency and rate, and a bill converted from a purchase order stays linked to it. If the
+  lines change, send the FULL replacement set, not only the wrong line. It refuses a bill with a
+  payment or a live debit note against it, one validated on MyInvois, and one dated inside a locked
+  period. Two things it is not for: a purchase that never happened (the owner voids the bill in
+  Taokeh) and goods sent back later (that is a debit note).
+- `update_quote_draft` / `update_delivery_order_draft` / `update_purchase_order_draft` — a quote, a
+  delivery order or a purchase order you already have: the date, the notes, the lines, and a quote's
+  validity and term or a purchase order's term. Read its lines with `search_document_lines` first:
+  `lines` is the FULL replacement set, and a line that is already right goes back as
+  `{ keep: <lineNo> }` so it survives exactly as it stands (a measured line keeps its unit). Approval
+  updates the document in place — same number, nothing posted, no stock moved. The customer or
+  supplier, the number and the currency are never changeable here, and only an open quote, an
+  un-invoiced delivery order or an unconverted purchase order can be corrected. Voiding, converting,
+  invoicing, sending and cancelling stay the owner's own taps.
+- `update_credit_note_draft` / `update_supplier_debit_note_draft` — a credit note, or a debit note raised
+  against a supplier's bill, that was posted with a wrong line, quantity, price, date or reason.
+  **ADMIN-ONLY**, and the note keeps its number. Every line you send must say whether the goods physically
+  came back (or went back to the supplier) — ask the user, don't assume. Your answer only pre-fills the
+  admin's question, and a one-tap approval never moves stock. If the note should never have existed, the
+  owner voids it in Taokeh; if something new happened later, that is a new note, not a correction.
+- `update_expense_draft` — a paid expense posted with the wrong date, amount, input SST, category,
+  paid-from account, payee or reference. Send only what is wrong: the rest stays as it is, and the
+  receipt on the entry carries across. If the expense never happened, the owner deletes it in Taokeh.
+- `update_logo_draft` — a new company logo (PNG or JPEG) for the paperwork Taokeh prints.
+  **ADMIN-ONLY**. Propose only an image the user gave you for this purpose; never generate one and
+  file it as their choice.
 - `create_recurring_invoice_draft` / `update_recurring_invoice_draft` — a standing invoice that repeats.
   You may propose the schedule and the lines; you may never propose an automatic issue mode — a
   recurring invoice that issues itself without a human is not yours to set up.
@@ -248,11 +333,41 @@ The rhythm that keeps books real: statement in, rows reviewed, books reconciled.
    excluded automatically, because the bank statement's lump payment already owns that movement.
 2. `bank_review_queue` — what's waiting. `draft_bank_classification` proposes where an unmatched
    row should go; think in **counterparties** ("this is Maxis, again, monthly" beats "this is
-   RM212.40").
+   RM212.40"). On a customer or supplier payment the same call takes `allocations` —
+   `{ docNumber, amount }` per invoice or bill, naming the contact, adding up to the whole line —
+   which pre-fills the owner's Match pane instead of leaving them to work out a partial or split
+   payment by hand. It settles nothing: they still read it and click Save.
 3. **Accepting a classification is not posting it.** Your accepted classifications are reviewed
    and posted by the human inside Taokeh — one more place the human-approves rule holds.
-4. `bank_reconciliation_status` — the honest scoreboard: how much of the bank is explained, what
+4. `bank_reconciliation_status` — the quick scoreboard: how much of the bank is explained, what
    remains. Bring this to the user weekly rather than waiting for month-end.
+5. **Working the reconciliation itself.** `bank_reconciliation_report` returns the audit
+   reconciliation for one bank account exactly as the owner's Reconciliation report and Clear
+   transactions pages show it: the statement balance, unpresented payments, deposits not yet
+   credited, statement lines not yet in the books, and the UNEXPLAINED difference, which is never
+   forced to zero. It also lists the book entries still to tick with the statement lines each can
+   pair with, and `hints` for three known patterns: a pair of entries that cancel out, a cash sale
+   with no deposit, and an opening balance the books don't hold. Relay a hint in its own
+   `explanation` wording, and when its `actionable` is false, name no fix. If the statement carries
+   no closing balance, ask the user for the figure printed on the paper statement and pass it as
+   `balance`.
+6. **Proposing the fixes.** Two drafts, both approved by an admin or bookkeeper on Banking → AI
+   drafts in Taokeh:
+   - `create_bank_clearing_draft` — proposed ticks: which book entries have appeared on the
+     statement. Take every id from the report: `entryId` from `clearStep.uncleared`, and, when you
+     can pair it, `statementLineId` from `clearStep.candidateLines`. Otherwise give a `clearedDate`
+     only if you know it; left out, it defaults to the reconciliation date, as on the page. Never
+     invent one. A tick posts nothing to the books and can be un-ticked.
+   - `create_payment_match_draft` — which open invoices or bills ONE posted customer or supplier
+     payment settled ("this deposit paid these three invoices"). The allocations must add up to the
+     whole line to the sen. Only the documents Banking → Match offers that line are accepted: that
+     customer's open invoices (or, when it has none open, those of the company's walk-in customer),
+     or that supplier's open bills. If the payment was posted against the wrong customer, the owner
+     re-posts it in Banking first. Say how you know — the remittance, the customer's message — in
+     `note`.
+
+   If anything a draft was filed against changes before approval, the approval is refused and
+   nothing is applied. Read the report again and file afresh.
 
 ## Workflow 4 — reading the business
 
@@ -261,7 +376,24 @@ When the user asks "how's business?", answer like an accountant, not a database.
 1. `business_snapshot` — the one-call overview; start here.
 2. `income_statement` and `balance_sheet` for the formal statements; `profit_drivers` and
    `sales_summary` when the question is what's moving; `expenses_summary` for the cost side.
-3. `cash_position` is NOW — and read it exactly as it is returned: `total` is LIQUID money only.
+3. Asked to analyse a YEAR or several years, call `financial_timeseries` ONCE — never
+   `income_statement` month after month. It returns up to 36 months in one call (revenue, cogs,
+   gross profit, opex, net income, closing cash, A/R, A/P, net cash movement), and you must relay
+   what it tells you: a month flagged `partial` has not finished and counts only up to the date in
+   `through`, so quote it as month-to-date and never let it bend a trend; and a month MISSING from
+   the series is either before the company's accounting start date (history still in its old system)
+   or in the future — never a month with no business. It gives figures only; the reading is yours.
+4. Asked "I'm profitable but there's no cash", "where is my money going" or "who pays me late", call
+   `working_capital` ONCE. It returns working capital in DAYS per month — debtor days, creditor
+   days, inventory days and the cash-conversion cycle, each stating the balance, the flow and the
+   day count it was divided over — plus the amount-weighted average days-to-pay per customer and per
+   supplier, slowest first. Two rules when you relay it. A `null` ratio means **no comparable base**
+   (its denominator was zero) — say that, never "0 days". And `inventoryDays` is `null` for a company
+   on the default modified-periodic costing mode, because selling does not move stock there and COGS
+   lands only at a stock take: **do not compute it yourself** from `inventoryClose` and `cogs` — that
+   is the exact number the server declined to state. Drill down from a slow name with `ar_aging`,
+   `open_invoices` and `search_documents` (docType `payment`), not by guessing.
+5. `cash_position` is NOW — and read it exactly as it is returned: `total` is LIQUID money only.
    Money the owner has advanced (`ownerFunding`) and anything owed on a credit card (`cards`, with
    `cardsOwing` for the total) come back SEPARATELY because they are liabilities, not cash. Report card
    debt beside the cash figure, never inside the total, never netted off it, and never as a negative bank
@@ -269,10 +401,18 @@ When the user asks "how's business?", answer like an accountant, not a database.
    you its own assumptions, and it deliberately excludes money that isn't certain (overdue
    receivables and marketplace payouts are reported separately as upside, never folded into the
    forecast). Repeat that honesty when you relay it.
-4. `ar_aging` / `ap_aging` for who owes and who's owed; `stock_level` and `low_stock` for
+6. `ar_aging` / `ap_aging` for who owes and who's owed; `stock_level` and `low_stock` for
    inventory; `channel_summary` when a marketplace (TikTok Shop, Shopee) is connected;
    `tax_position` for the recorded SST/e-invoice posture.
-5. `get_document_pdf` fetches the real PDF of any document; `get_attachment` retrieves a filed
+   `counter_day` reads one day of the Counter till (an add-on). While that day's `status` is
+   `open`, its takings are NOT in the ledger yet, so they won't show in `sales_summary` or
+   `cash_position` — say so. Sales billed on credit at the till are the exception: they post at
+   once as ordinary invoices.
+   `employer_cost_estimate` answers "what would a hire at RM4,000 really cost me, and what would
+   they take home?" It is an estimate on stated assumptions (resident, single, no reliefs, unless
+   you pass otherwise): repeat those assumptions, and never present it as a quote or as tax advice.
+   Admin and bookkeeper + payroll connections only.
+7. `get_document_pdf` fetches the real PDF of any document; `get_attachment` retrieves a filed
    source document.
 
 Two reading rules. **Totals are RINGGIT** — `total`, `netIncome`, `balance` and their kin come back
@@ -333,7 +473,7 @@ Never work around a refusal, and never present a refusal as an error in the user
 
 Payroll itself — runs, payslips and statutory filing (admin-only and sensitive; the staff-record change lane above is the one payroll door this skill covers) — migration from another system (`intake_contract`,
 `stage_master_data`, `stage_opening_balances`, `stage_document` — Taokeh's own switching guide
-covers these), and point-of-sale Counter mode. The tools describe themselves fully if the user
+covers these), and operating point-of-sale Counter mode (reading a till day is covered above). The tools describe themselves fully if the user
 takes you there; go slowly and read what they say.
 
 ---
