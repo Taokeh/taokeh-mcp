@@ -399,7 +399,7 @@ approves it in Taokeh.
 
 **Payroll (admin or Bookkeeper + payroll connections with the payroll scope only):**
 `create_payroll_run_draft` (a month's run — **approved on its review page only**, and an approved run
-stays a draft run: nobody is paid and nothing is filed until the owner finalizes it),
+stays a draft run: nobody is paid and nothing is filed; finalizing it is the owner's step in Taokeh),
 `create_leave_draft` and `create_leave_void_draft` (record or void leave). `leave_register` reads
 each employee's leave balances and the year's leave, with no pay figures; the `leaveId` a void needs
 comes from it (`voidableByDraft`), and pending applications are decided by a person on the Leave page,
