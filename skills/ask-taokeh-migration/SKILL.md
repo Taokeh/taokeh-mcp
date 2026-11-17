@@ -2,7 +2,7 @@
 name: ask-taokeh-migration
 description: Move a Malaysian SME's books INTO Taokeh (taokeh.my) from another accounting system — Bukku, Financio, AutoCount, QNE, a spreadsheet, or a paper book — through the Ask Taokeh connector (MCP). Use when the user is switching systems and the Taokeh staging tools are available in this session.
 license: MIT
-verifiedAgainstTaokehRelease: "1.26"
+verifiedAgainstTaokehRelease: "1.29"
 ---
 
 # Ask Taokeh — switching systems
@@ -460,7 +460,7 @@ Refusals here are information, not failure. Relay what they say; never work arou
 
 Day-to-day bookkeeping after the switch — invoicing, expenses, bank review, reading the business —
 belongs to the **ask-taokeh** skill; hand over to it once the books are in. Payroll runs are
-admin-only and sensitive. Bill-of-materials links (combination SKUs built from components) are a
+drafted through that skill's payroll tools, for an admin or a Bookkeeper + payroll login only. Bill-of-materials links (combination SKUs built from components) are a
 separate sheet with their own review step, uploaded by the owner on the Import products page — not
 staged here.
 

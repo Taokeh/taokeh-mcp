@@ -2,7 +2,7 @@
 name: ask-taokeh
 description: Run day-to-day Malaysian SME bookkeeping through the Ask Taokeh connector (MCP) — invoicing, expenses, bank review, and honest business readings. Use when the user's books live in Taokeh (taokeh.my) and the Taokeh connector tools are available in this session.
 license: MIT
-verifiedAgainstTaokehRelease: "1.26"
+verifiedAgainstTaokehRelease: "1.29"
 ---
 
 # Ask Taokeh
@@ -226,7 +226,9 @@ Two different doors, and the choice matters:
   they approve.
 
 `create_bill_draft` takes stocked products only. A bill for services or non-stock items is entered
-on Taokeh's manual bill form, or, if it is already paid, filed as an expense.
+on Taokeh's manual bill form, or, if it is already paid, filed as an expense. A bill for goods on a
+purchase order already in Taokeh names it with `purchaseOrderId` (an open order of the same supplier,
+in ringgit): approval matches the bill to the order line by line and the order's status updates.
 
 - **A supplier payment** (`create_payment_draft`) SETTLES bills you already recorded — it creates
   nothing new, it clears what is owed. Resolve the supplier with `resolve_vendor`, see what is
@@ -388,11 +390,20 @@ approves it in Taokeh.
   (depreciation is brought up to the disposal month, any posted for later months is taken back, then
   the asset is cleared with its gain or loss). `create_depreciation_draft` — a depreciation run
   through a month-end.
+- `asset_register` reads the Fixed Assets register: each asset with its cost, depreciation and net
+  book value, the purchases waiting to be registered (each with the `lineId` `create_asset_draft`
+  takes), the cash and bank accounts a disposal's proceeds may go into, and the months depreciation
+  has not been run for. `loan_register` reads the loans and their instalments. It is read-only: a new
+  loan is added on Financing and an instalment on the loan's page in Taokeh, and a loan payment on an
+  imported bank line is proposed with `draft_bank_classification`'s `LOAN_PAYMENT` category.
 
 **Payroll (admin or Bookkeeper + payroll connections with the payroll scope only):**
 `create_payroll_run_draft` (a month's run — **approved on its review page only**, and an approved run
 stays a draft run: nobody is paid and nothing is filed until the owner finalizes it),
-`create_leave_draft` and `create_leave_void_draft` (record or void leave).
+`create_leave_draft` and `create_leave_void_draft` (record or void leave). `leave_register` reads
+each employee's leave balances and the year's leave, with no pay figures; the `leaveId` a void needs
+comes from it (`voidableByDraft`), and pending applications are decided by a person on the Leave page,
+not through the connector.
 
 **Taking a draft back:** `withdraw_draft` removes a draft YOU filed through this connection while it
 is still waiting. It cannot remove a draft someone else filed, or one already approved or rejected.
@@ -423,7 +434,8 @@ The rhythm that keeps books real: statement in, rows reviewed, books reconciled.
    payment by hand. It settles nothing: they still read it and click Save. A row carrying
    `possibleDuplicateOf` resembles money the owner already recorded by hand, and one carrying
    `pairedWith` is already in the books through a book entry: propose no category for either,
-   and say why.
+   and say why. A row whose `possibleTwin` has kind `earlierStatement` is the same line on an
+   earlier statement of the account; the owner ignores it, so propose nothing for it either.
 3. **Accepting a classification is not posting it.** Your accepted classifications are reviewed
    and posted by the human inside Taokeh — one more place the human-approves rule holds.
 4. `bank_reconciliation_status` — the quick scoreboard: how much of the bank is explained, what
@@ -556,7 +568,7 @@ Never work around a refusal, and never present a refusal as an error in the user
 
 ## What this skill deliberately does not cover
 
-Payroll itself — runs, payslips and statutory filing (admin-only and sensitive; the staff-record change lane above is the one payroll door this skill covers) — migration from another system (`intake_contract`,
+Finalizing, posting, reopening or deleting a payroll run, sending payslips, and statutory filing (the connector drafts a run, leave and a staff-record change, as above, and does none of these; they are the owner's steps) — migration from another system (`intake_contract`,
 `stage_master_data`, `stage_opening_balances`, `stage_document` — Taokeh's own switching guide
 covers these), and operating point-of-sale Counter mode (reading a till day is covered above). The tools describe themselves fully if the user
 takes you there; go slowly and read what they say.
