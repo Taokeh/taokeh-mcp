@@ -19,15 +19,17 @@ AI meeting them cold still lacks is the craft across them. This skill is that cr
 - which tools replace a whole set and which dedupe per document — so "found a mistake" has one
   correct answer each time
 - what to leave out and report instead (credit balances on an aged list), and what never to invent
-- how to put right a mistake found after it posted — re-import, void-and-replace, or a correcting
-  document — instead of quietly booking the same sale twice
+- how to put right a mistake found after it posted — re-stage the list, a correction draft that
+  keeps the document's number, or a correcting document — instead of quietly booking the same sale
+  twice
 - the ground rule: your AI stages, **you** approve and post, in-app
 
 ## What you need
 
 1. A company on Taokeh — the 14-day free trial includes the Ask Taokeh connector.
-2. The connector linked to your AI app (in Taokeh: **Integrations → Ask Taokeh connector**).
-3. The switching lane turned on by you, in Taokeh, at **/switch**.
+2. The connector linked to your AI app (in Taokeh: **Integrations → Ask Taokeh connector**), with
+   its **Drafts & staging (write)** access.
+3. For historical documents, the documents lane turned on by you, in Taokeh, at **/switch**.
 4. This skill installed in your AI client.
 
 Without a company on Taokeh the skill is just a readable description of how an AI-assisted

@@ -2,7 +2,7 @@
 name: ask-taokeh-migration
 description: Move a Malaysian SME's books INTO Taokeh (taokeh.my) from another accounting system — Bukku, Financio, AutoCount, QNE, a spreadsheet, or a paper book — through the Ask Taokeh connector (MCP). Use when the user is switching systems and the Taokeh staging tools are available in this session.
 license: MIT
-verifiedAgainstTaokehRelease: "1.14"
+verifiedAgainstTaokehRelease: "1.26"
 ---
 
 # Ask Taokeh — switching systems
@@ -26,8 +26,13 @@ Check whether the migration tools (`intake_contract`, `stage_master_data`,
 1. They need a company on Taokeh — the 14-day free trial at https://taokeh.my includes the
    connector.
 2. In Taokeh: **Integrations → Ask Taokeh connector** mints the connection they add to their AI app.
-3. The switching lane itself is turned on by the owner at **/switch** — that's their click, not
-   yours.
+   The staging tools ride on its **Drafts & staging (write)** access; a connection minted without it
+   reads the books but cannot stage.
+
+**If they are there but refuse**, the refusal names the cause: a connection authorized read-only
+(the owner reconnects with write access), or AI features terms nobody has accepted yet (an admin
+accepts them once, in Taokeh). Historical documents also need the owner to open the documents lane
+at **/switch → "Bring over your documents"**. All three are the owner's clicks, not yours.
 
 **If this file and the tools disagree, THE TOOLS WIN.** This skill is a file on the user's machine
 and Taokeh keeps shipping; nothing we do can update a copy on someone's disk. A tool's own
@@ -60,8 +65,8 @@ nobody can tie back to the old system's reports.
   numbers, dates or figures, and never a total you worked backwards from. A blank field is honest
   and gets filled in by a human; a guessed one passes silently and surfaces months later in a
   statutory filing.
-- **Always send the printed total in `sourceTotal`, and never adjust a row to make it tie.**
-  Taokeh re-derives its own figure from the rows and shows the two side by side. That gap IS the
+- **Always send the printed total in `sourceTotal`, and never adjust a row to make it tie.** (The
+  opening-balance and document doors take one; master-data lists have no total.) Taokeh re-derives its own figure from the rows and shows the two side by side. That gap IS the
   check — the whole reason the owner can trust the migration. If the two disagree, report the gap
   and let the owner decide; a row nudged to force a tie destroys the only evidence you had.
 - **Send amounts in RINGGIT, and read the field name before quoting one back.** You send plain
@@ -134,17 +139,18 @@ credit column in the debit field", so the care has to be yours.
 **`acceptedSourceHeaders` in every contract answer is your mapping key.** It lists each field
 Taokeh takes, and the real-world column headings that mean it — "A/C Code", "Nominal Code",
 "Kod Akaun" all mean `code`; "Outstanding", "Balance Due" mean `outstanding`. Read it for the kind
-you are about to stage, match their header row against it, and emit Taokeh's field names.
+you are about to stage, match their header row against it, and send each entry's `apiField` as the
+row key, not the spreadsheet's heading (an aged list's "due" column is sent as `dueDate`). Row
+keys are strict: a key Taokeh does not know is refused by name, with the key it probably meant,
+and nothing in that call is staged. Fix the key and send the whole set again.
 
 **Match on MEANING, not on the exact string — real headers arrive decorated.** Accounting packages
 number their template columns and mark the required ones, so a genuine Bukku export reads
 `Legal Name (1) *`, `Contact No. (14)`, `Street +`, `Is Customer (8)`; a Financio trial balance
 reads `Debit (MYR)`, `Credit (MYR)`. Strip trailing decoration before you compare — a `(number)`,
 a `*` or `+`, a currency tag like `(MYR)` or `(RM)`. Without that, most of a real file matches
-nothing and you will wrongly conclude the export is unusable. The list is a guide to what each
-field MEANS; you are
-reading it with judgement, not running a string comparison. A heading on the list is certainly
-understood; one that is merely obvious ("Doc No" for a reference) is fine too.
+nothing and you will wrongly conclude the export is unusable. The list says what each field MEANS;
+a heading that is merely obvious ("Doc No" for a reference) is fine too.
 
 **Some columns have no home here, and that is the honest answer.** Bukku prints an SST
 registration number, contact groups, price levels; other systems print salesman codes and cost
@@ -193,34 +199,62 @@ that quote is your tell that the date is missing.
 balance and every document afterwards land on these codes. It is the quietest step: no journal
 line, no figures. Its key is the account CODE — an existing code is updated in place and keeps
 every posting attached to it, and nothing is ever deleted, so an account missing from your list is
-simply left alone.
+simply left alone. Renames always go through. A change of type or normal balance is refused on an
+account that already has postings or that a system role, a bank or card, a fixed asset or a loan
+depends on (the contract's `currentChart` marks each). When the owner really wants it
+reclassified, the route is a new account plus a dated reclassification journal
+(`create_journal_draft`). Say so rather than retrying.
 
 **3. Contacts, then products with opening stock — `stage_master_data`, kinds 'contacts' and
 'products'.** Because a document staged later needs a customer to attach to and a product to price.
-Contacts dedupe case-insensitively by name; products upsert by SKU, and only the fields you
-actually sent are changed. Opening stock is the one part of master data that touches the books: a
-NEW SKU carrying both a cutover quantity and a cutover cost posts a real opening-stock entry when
-the owner approves. Send the cutover figures or send nothing — never a guess.
+Contacts dedupe case-insensitively by name. Every contact row says which side it is on
+(`isCustomer` / `isVendor`, both for a party that buys and sells, or `defaultRole` for a
+one-sided list); a row that says neither is skipped at import, and the staging answer names it so
+you can fix it first. Products upsert by SKU, and only the fields you actually sent are changed.
+Opening stock is the one part of master data that touches the books: a NEW SKU carrying both
+`openingQty` and `avgCost` posts a real opening-stock entry when the owner approves. If the export
+prints a stock value rather than a unit cost, the cost is that value divided by the quantity. Send
+the cutover figures or send nothing — never a guess.
 
 **4. Trial balance — `stage_opening_balances` with kind 'trial_balance'.** This is the financial
 foundation of the switch. Every row of the set in ONE call. Expect FEWER lines to post than you
 sent: the control accounts (receivables, payables, stock) and any P&L rows are **set aside**
 automatically — their balances are carried by the aged lists, the products step and retained
 earnings. The done screen names each set-aside. That is correct, not rows going missing — never
-re-stage to "fix" it.
+re-stage to "fix" it. A row with neither a debit nor a credit is read as a section heading and
+dropped; send an explicit 0 for a real zero-balance account.
+
+One kind of row is refused, and **nothing in that call is staged**: a figure on a
+foreign-currency bank or card (Taokeh posts only ringgit accounts for now). Take the row out, send
+the set again, and tell the owner its ringgit value goes in afterwards as a journal against Opening
+Balance Equity. A row named like one of Taokeh's own zero-balance clearing accounts (Contra
+Clearing, Refund Clearing) is staged but arrives unmatched: its figure belongs on some other
+account, and the owner places it on the review screen.
+
+**Assets the business already owns.** Each asset still in use needs two things in Taokeh, and they
+must agree: a row in the asset register (Fixed Assets → New asset → "Asset you already own", with
+its cost and the depreciation already taken up to the accounting start date), and the trial-balance
+lines for the same asset — its cost on the 15xx asset account and its accumulated depreciation on
+1590. The register row posts nothing; the trial balance carries the money. With only one of the two,
+the Fixed Asset Schedule shows a difference against the general ledger.
 
 **5. Aged receivables and payables — `stage_opening_balances`, kinds 'aged_receivables' and
 'aged_payables'.** These carry the unpaid invoices and bills across the cutover so chasing and
 paying still work on day one. Where a report prints both an original amount and an amount still
 owed, Taokeh books the **outstanding** — a part-paid invoice comes across at what is left. Where
-a row prints no date, it books at the accounting start date.
+a row prints no date, it books at the accounting start date. A row dated after the start date is
+skipped: it is not an opening document (see "The cutover line").
 
 **6. Historical documents — `stage_document`, one call per document.** Only documents genuinely
-issued in the old system (or written in a paper book). **Supplier bills before sales invoices for
-each period**, because Taokeh works out cost of sales from the stock that was bought. Every
-document keeps its original number and original date.
+issued in the old system (or written in a paper book), and only once the owner has opened the
+documents lane at /switch; until then every call is refused. **Supplier bills before sales
+invoices for each period**, because Taokeh works out cost of sales from the stock that was bought.
+Every document keeps its original number and original date; a `reference` already on the books is
+refused by name. A sales invoice with no number of its own takes the next one in Taokeh's invoice
+series, and where Taokeh cannot yet tell where that series stands, the owner is asked for the first
+number when entering it, so the books never restart at INV1.
 
-Four arguments on this door are worth knowing before you start:
+Six arguments on this door are worth knowing before you start:
 
 - **`attachmentToken` — attach the original whenever you read the document off a photo, a scan or a
   PDF.** Call `request_attachment_upload`, PUT the raw bytes to the `uploadUrl` it returns, then pass
@@ -228,20 +262,29 @@ Four arguments on this door are worth knowing before you start:
   beside the actual slip on that document's own screen, and the original lands on the posted document.
   **This door takes the token only** — there is no inline base64 lane here, unlike the day-to-day draft
   tools. Without a token the owner is approving your arithmetic on your word alone.
+- **`productRef` — required on every line, including the ones that are not products.** A delivery
+  charge, a labour line, a service fee or a rounding line carries its own wording here ("Delivery
+  charge"), and Taokeh creates that wording as a non-stock item so the document still works out; the
+  answer names each item it created, so tell the owner. Don't drop the line, fold its amount into
+  another, or invent a SKU. A line with no `productRef` at all refuses the whole call.
 - **`quantity` — OMIT it on a measured line.** In a company with a measurement profile (timber
   tonnage and the like), give the structured `thickness`/`width`/`tally` — or the cut detail written
-  in the description (`"2x2 = 10/10 12/14"`) — and Taokeh computes the authoritative quantity from
-  the measurements. A quantity sent beside a readable tally is NOT used: it is kept as your advisory
-  figure and shown to the owner beside Taokeh's, and the document is held out of the month's bulk
-  approve for its own review — unless the old document's printed total already ties the computed
-  figure. In an ordinary company nothing is derived, so there your quantity IS the quantity — send
-  it.
-- **`working` — show your per-line arithmetic.** It is what the owner reads when a figure looks odd, and
-  it is the difference between a reviewable row and a number they have to trust.
+  in the description (`"2x2 = 10/10 12/14"`) — and Taokeh computes the quantity from the
+  measurements. A quantity sent beside a readable tally is kept only as your advisory figure, shown
+  beside Taokeh's, and the document is held out of the month's bulk approve unless its printed
+  total already ties. In an ordinary company nothing is derived: there your quantity IS the
+  quantity.
+- **`working` — show your per-line arithmetic.** It is what the owner reads when a figure looks odd.
 - **`residual: true` — mark any balancing or catch-all line honestly** (rounding, an adjustment,
   "misc"). Taokeh flags a residual line carrying a material share of the document, because that is
   exactly where a misread hides. **Never use a residual line to force a total to tie** — report the gap
   instead and let the owner decide.
+- **`marketplaceOrderKey`: when an old invoice was a Shopee, TikTok Shop or Shopify order, name it.**
+  `SHOPEE-<order number>`, `TIKTOK-<order ID>`, or `SHOPIFY-<order ID>` (the number in the admin address,
+  not "#1001"). It posts as that channel's sale, so a later import of the same order is recognised instead
+  of booked twice. One order is one invoice: a number already in the books, or already on another staged
+  document, is refused. A Shopee number starts with the order's date; if that is not the invoice date, the
+  owner is asked to check.
 
 **7. Company settings — `stage_master_data` with kind 'settings', last.** Company name,
 registration number, TIN, address, state, statutory officer, language, measurement profile. Last
@@ -262,8 +305,11 @@ One date decides where everything goes: the company's **accounting start date**.
   the start date is exactly right, and that is what makes it an opening document.
 - **Strictly after it** → historical documents, through `stage_document`. A document dated on or
   before the start date is staged but FLAGGED as pre-cutover, and its approve door never opens —
-  the owner's opening balances already carry it, so it can never be entered. Filter those out of
-  your export if you can — staging them wastes everyone's time.
+  the owner's opening balances already carry it, so it can never be entered. Taokeh creates no
+  catalogue item for it either, so its lines show as unresolved: leave them alone. Don't resolve
+  its products, and never send it through a bill or expense door instead: that books the
+  double-count the fence exists to stop. The only answers are to leave it out or for the owner to
+  move the accounting start date. Filter those out of your export if you can.
 - **Never both.** A December invoice sitting in the aged receivables list AND staged as a document
   is the classic double-count. Decide by date, once, for the whole export.
 
@@ -313,12 +359,14 @@ they refuse with tells you the route:
   `sourceDocId`** — that does not correct anything, it books the sale twice, and it is the single
   most expensive mistake available to you here.
 
-  The honest fix is the one an accountant would use: leave the migration lane and draft a
-  correcting document in the ordinary way — `create_credit_note_draft` against the original when
-  it was overstated, `create_debit_note_draft` when it was understated, `create_journal_draft` when
-  neither fits. Find the original with `search_documents` first (it needs at least one filter — a
-  reference, a party, a date range), and credit against its number so the correction is tied to
-  what it corrects. The owner approves it like any other draft. History stays intact and the
+  The honest fix leaves the migration lane for the ordinary correction tools. Find the original
+  with `search_documents` first (it needs at least one filter — a reference, a party, a date
+  range). A misread line, date or term is usually a correction draft: `update_invoice_draft` or
+  `update_bill_draft` with the document's id proposes the fix, an admin approves the difference,
+  and the document keeps its number. Those tools refuse some documents (one with a payment
+  allocated, for example), and the refusal names why. Then the correction is a new document against
+  the original: `create_credit_note_draft` when a sale was overstated, `create_debit_note_draft`
+  when it was understated, `create_journal_draft` when neither fits. History stays intact and the
   correction is visible, which is the point.
 
 **Tell the owner to lock the books LAST.** Every route above needs the books unlocked. Once they
@@ -337,10 +385,9 @@ and stray documents have all landed.
   several contacts, a printed total that disagrees — is staged anyway, flagged, and held out of
   bulk approve for the owner to open individually. That is working as intended. Say so rather than
   retrying.
-- **Presentation fields do not migrate.** Web addresses, storefront visibility and product images
-  stay with the old system. Tell the owner to keep copies **before** it is switched off.
 - **The employees lane is admin-only and CREATE-only.** Anyone already in Taokeh must be left off
-  the list. It carries salaries and IC numbers, so it is the owner's own lane by design.
+  the list; a change to someone who exists goes through `update_employee_draft` or their own page.
+  It carries salaries and IC numbers, so it is the owner's own lane by design.
 
 ## The human-approval map
 
@@ -349,24 +396,29 @@ Know where each thing goes, so you can tell the owner where to look:
 | What you staged | Where the owner approves it |
 |---|---|
 | chart of accounts | **/accounts/staged** |
-| products, contacts | the Import screens (Import products / Import contacts) |
+| products, contacts | the Import screens (**/products/import/staged**, **/contacts/import/staged**) |
+| staff list | **/payroll/employees/import/staged** |
 | company settings | **/settings/staged** |
-| trial balance, aged lists | the **/switch** review screens |
-| historical documents | **/switch → documents**, in monthly batches |
+| trial balance | **/switch/trial-balance/staged** |
+| aged lists | **/opening-balances/receivables/staged**, **/opening-balances/payables/staged** |
+| historical documents | **/switch/documents**, in monthly batches |
 | everything above | also surfaces under **Approvals** on **/go** |
 
-The owner matches accounts to their chart, checks the parties, ties totals to their old reports,
-and posts. You do not post, and you never describe staged rows as booked.
+Every contract answer names its own `reviewUrl`; trust it over this table. `my_work` lists what is
+still staged and what the owner rejected, with the reason Taokeh gave. The owner matches accounts
+to their chart, checks the parties, ties totals to their old reports, and posts. You do not post,
+and you never describe staged rows as booked.
 
 ## "Expected array, received string" — stop, it is the client, not the books
 
 If a staging call refuses with `-32602 … expected array, received string` (or `expected number,
 received string`), **Taokeh is fine and the owner's data is fine.** Your own client sent the rows
-as plain text instead of a list. `intake_contract` keeps working because it takes a simple value;
-it is `stage_master_data`, `stage_opening_balances` and `stage_document` that die — so the whole
-switching lane stops while reads carry on as normal.
+as something other than a list. Taokeh already unwraps a list sent as JSON text and a number sent
+as digits, so this shows only when what arrived could not be read either way. `intake_contract` keeps working because
+it takes a simple value; it is `stage_master_data`, `stage_opening_balances` and `stage_document`
+that die — so the whole switching lane stops while reads carry on as normal.
 
-The call never reaches Taokeh's server, so it cannot tell you this itself.
+The call is refused before Taokeh's own code runs, so it cannot tell you this itself.
 
 **Tell the owner plainly:**
 
@@ -393,8 +445,9 @@ Stop, say why, and let the owner act:
 - **The books are locked** — a permanent refusal until they unlock.
 - **An aged list's opening documents are already posted** — staging over them would double-count, and
   only the owner can undo them (see "When the mistake is found AFTER it posted").
-- **The switching lane is closed** — the owner turns it on at **/switch**; it can only be open
+- **The documents lane is closed** — the owner turns it on at **/switch**; it can only be open
   before the books are locked.
+- **The connection is read-only, or the AI terms are not accepted** — the owner's step, in Taokeh.
 - **A party or product match is genuinely ambiguous** — flag it, name the candidates, ask.
 - **The owner left a document out, or already entered it** — that decision stands. Ask them; don't
   re-stage.
