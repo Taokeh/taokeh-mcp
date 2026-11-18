@@ -5,7 +5,7 @@ the tools your company exposes, and calls one. That is the whole scope — copy 
 integration, or use the CLI to check a token from the terminal.
 
 Taokeh (<https://taokeh.my>) is accounting software for Malaysian small businesses. The connector
-is read-first: most of its tools read the books. The tools that write file a **pending draft** —
+reads the books and files drafts. Every tool that writes files a **pending draft** —
 somebody with access approves it inside Taokeh before anything is posted. Nothing posts by itself.
 
 ## Install
