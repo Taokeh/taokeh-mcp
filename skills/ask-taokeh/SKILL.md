@@ -79,8 +79,8 @@ Two habits that keep a stale copy harmless:
 - **Dates are Malaysia time (MYT), formatted YYYY-MM-DD.** "Today" means today in Kuala Lumpur,
   whatever timezone the user's AI client runs in.
 - **Switching features on is the owner's click, never yours.** If a tool refuses because an
-  add-on isn't active, relay what the refusal says (it names the price and the exact settings
-  page) — and stop there. You never accept terms, change settings, or buy anything on the
+  add-on isn't active, relay what the refusal says (it names the add-on and where an admin turns
+  it on) — and stop there. You never accept terms, change settings, or buy anything on the
   owner's behalf, and Taokeh's server will refuse if you try.
 - **Don't interpret tax law.** Taokeh reports the tenant's recorded tax posture (`tax_position`)
   and applies published rates. Whether something is taxable, exempt, or claimable is a question
@@ -561,8 +561,8 @@ Refusals are information, not failure. The common ones:
   yet. That acceptance is theirs to click, in-app. You cannot and must not accept it for them.
 - **"This connection is authorized read-only"** — the connector was linked with read scope.
   Filing drafts needs the owner to reconnect with write access; reading still works fine.
-- **An add-on refusal** (e.g. Counter mode) — the message names the price and the settings page.
-  Relay it; the decision is the owner's.
+- **An add-on refusal** (e.g. Counter mode) — the message names the add-on and where an admin turns
+  it on. Relay it; the decision is the owner's.
 
 Never work around a refusal, and never present a refusal as an error in the user's books.
 
